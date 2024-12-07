@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Productos en Tiempo Real</title>
+</head>
+<body>
+  <h1>Productos en Tiempo Real</h1>
+
+  <!-- Formulario para agregar productos -->
+  <h2>Agregar Producto</h2>
+  <form id="addProductForm">
+    <input type="text" placeholder="Título" id="title" required />
+    <input type="number" placeholder="Precio" id="price" required />
+    <input type="number" placeholder="Stock" id="stock" required />
+    <button type="submit">Agregar Producto</button>
+  </form>
+
+  <!-- Lista dinámica de productos -->
+  <h2>Lista de Productos</h2>
+  <ul id="productList">
+    {{#each products}}
+      <li>
+        {{this.title}} - Precio: {{this.price}} - Stock: {{this.stock}}
+        <button class="deleteBtn" data-id="{{this.id}}">Eliminar</button>
+      </li>
+    {{/each}}
+  </ul>
+
+  <!-- Scripts de WebSocket -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // Formulario para agregar productos
+    const addProductForm = document.getElementById('addProductForm');
+    addProductForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const price = document.getElementById('price').value;
+      const stock = document.getElementById('stock').value;
+
+      socket.emit('addProduct', { title, price, stock });
+
+      // Limpiar los campos del formulario
+      document.getElementById('title').value = '';
+      document.getElementById('price').value = '';
+      document.getElementById('stock').value = '';
+    });
+
+    // Eliminar producto
+    document.getElementById('productList').addEventListener('click', (e) => {
+      if (e.target.classList.contains('deleteBtn')) {
+        const productId = e.target.getAttribute('data-id');
+        socket.emit('deleteProduct', productId);
+      }
+    });
+
+    // Actualizar lista de productos en tiempo real
+    socket.on('updateProducts', (products) => {
+      const productList = document.getElementById('productList');
+      productList.innerHTML = '';
+      products.forEach((product) => {
+        const productItem = document.createElement('li');
+        productItem.innerHTML = `
+          ${product.title} - Precio: ${product.price} - Stock: ${product.stock}
+          <button class="deleteBtn" data-id="${product.id}">Eliminar</button>
+        `;
+        productList.appendChild(productItem);
+      });
+    });
+  </script>
+</body>
+</html>
+
