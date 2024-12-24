@@ -1,140 +1,103 @@
-const express = require('express'); // Importa Express
-const router = express.Router(); // Configura el router
-const fs = require('fs').promises; // Importa File System con promesas
-const path = require('path'); // Importa Path para trabajar con rutas
+const express = require('express');
+const router = express.Router();
+const Product = require('../models/Product'); // Importar el modelo de producto
 
-const productosPath = path.join(__dirname, '../data/productos.json'); // Ruta al archivo JSON
-
-// Ruta para listar todos los productos
+// Ruta para listar todos los productos con filtros, paginación y ordenamiento
 router.get('/', async (req, res) => {
     try {
-        const data = await fs.readFile(productosPath, 'utf-8'); 
-        const productos = JSON.parse(data); // Convierte el JSON a un array
-        res.json(productos); // Devuelve los productos
+        const { limit = 10, page = 1, sort, query } = req.query;
+
+        // Construir filtro dinámico
+        let filter = {};
+        if (query) {
+            filter = { 
+                $or: [
+                    { category: query }, 
+                    { status: query.toLowerCase() === 'true' } // Convertir 'true' o 'false' a booleano
+                ]
+            };
+        }
+
+        // Configuración de opciones para paginación y ordenamiento
+        const options = {
+            limit: parseInt(limit),
+            page: parseInt(page),
+            sort: sort === 'asc' ? { price: 1 } : sort === 'desc' ? { price: -1 } : undefined,
+        };
+
+        // Usar paginación de Mongoose
+        const result = await Product.paginate(filter, options);
+
+        res.json({
+            status: 'success',
+            payload: result.docs,
+            totalPages: result.totalPages,
+            prevPage: result.hasPrevPage ? result.page - 1 : null,
+            nextPage: result.hasNextPage ? result.page + 1 : null,
+            page: result.page,
+            hasPrevPage: result.hasPrevPage,
+            hasNextPage: result.hasNextPage,
+            prevLink: result.hasPrevPage ? `/api/products?page=${result.page - 1}` : null,
+            nextLink: result.hasNextPage ? `/api/products?page=${result.page + 1}` : null,
+        });
     } catch (error) {
-        console.error('Error al leer productos:', error.message);
-        res.status(500).json({ error: 'Error al leer productos' });
+        console.error('Error al obtener productos:', error.message);
+        res.status(500).json({ status: 'error', message: 'Error al obtener productos' });
     }
 });
 
 // Ruta para obtener un producto por su ID
 router.get('/:pid', async (req, res) => {
     try {
-        const data = await fs.readFile(productosPath, 'utf-8'); 
-        const productos = JSON.parse(data); 
-
-        const productId = req.params.pid; // Obtén el ID del producto de los parámetros
-        const producto = productos.find((p) => p.id === productId); 
-        if (!producto) {
-
-            // Si no se encuentra, devuelve un error 404
-            return res.status(404).json({ error: `Producto con ID ${productId} no encontrado` });
+        const product = await Product.findById(req.params.pid);
+        if (!product) {
+            return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }
-
-        res.json(producto); // Devuelve el producto encontrado
+        res.json(product);
     } catch (error) {
-        console.error('Error al buscar el producto:', error.message);
-        res.status(500).json({ error: 'Error al buscar el producto' });
+        console.error('Error al obtener el producto:', error.message);
+        res.status(500).json({ status: 'error', message: 'Error al obtener el producto' });
     }
 });
 
 // Ruta para agregar un nuevo producto
 router.post('/', async (req, res) => {
     try {
-        const data = await fs.readFile(productosPath, 'utf-8'); 
-        const productos = JSON.parse(data); 
-
-        // Crear un nuevo producto desde el cuerpo de la solicitud
-        const newProduct = {
-            id: String(Date.now()), // Genera un ID único basado en el tiempo
-            title: req.body.title,
-            description: req.body.description,
-            code: req.body.code,
-            price: req.body.price,
-            status: req.body.status ?? true, 
-            stock: req.body.stock,
-            category: req.body.category,
-            thumbnails: req.body.thumbnails || [] 
-        };
-
-        // Validar campos obligatorios
-        if (!newProduct.title || !newProduct.description || !newProduct.code || !newProduct.price || !newProduct.stock || !newProduct.category) {
-            return res.status(400).json({ error: 'Todos los campos obligatorios deben estar presentes' });
-        }
-
-        // Validar que el código no esté duplicado
-        const existingProduct = productos.find((p) => p.code === newProduct.code);
-        if (existingProduct) {
-            return res.status(400).json({ error: 'El código ya existe' });
-        }
-
-        productos.push(newProduct); // Agrega el nuevo producto al array
-        await fs.writeFile(productosPath, JSON.stringify(productos, null, 2)); 
-
-        res.status(201).json(newProduct); // Devuelve el producto creado
+        const newProduct = new Product(req.body);
+        const savedProduct = await newProduct.save();
+        res.status(201).json(savedProduct);
     } catch (error) {
         console.error('Error al agregar el producto:', error.message);
-        res.status(500).json({ error: 'Error al agregar el producto' });
+        res.status(500).json({ status: 'error', message: 'Error al agregar el producto' });
     }
 });
 
 // Ruta para actualizar un producto por su ID
 router.put('/:pid', async (req, res) => {
     try {
-        const data = await fs.readFile(productosPath, 'utf-8'); 
-        const productos = JSON.parse(data); 
-
-        const productId = req.params.pid; // Obtén el ID del producto de los parámetros
-        const productIndex = productos.findIndex((p) => p.id === productId); // Encuentra el índice del producto
-
-        if (productIndex === -1) {
-            // Si no se encuentra el producto, devuelve un error 404
-            return res.status(404).json({ error: `Producto con ID ${productId} no encontrado` });
+        const updatedProduct = await Product.findByIdAndUpdate(req.params.pid, req.body, { new: true });
+        if (!updatedProduct) {
+            return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }
-
-        // Actualiza los campos del producto existente sin modificar su ID
-        const updatedProduct = {
-            ...productos[productIndex],
-            ...req.body, 
-            id: productos[productIndex].id // Asegura que el ID no se modifique
-        };
-
-        productos[productIndex] = updatedProduct; // Actualiza el producto en el array
-
-        await fs.writeFile(productosPath, JSON.stringify(productos, null, 2)); 
-
-        res.json(updatedProduct); // Devuelve el producto actualizado
+        res.json(updatedProduct);
     } catch (error) {
         console.error('Error al actualizar el producto:', error.message);
-        res.status(500).json({ error: 'Error al actualizar el producto' });
+        res.status(500).json({ status: 'error', message: 'Error al actualizar el producto' });
     }
 });
 
 // Ruta para eliminar un producto por su ID
 router.delete('/:pid', async (req, res) => {
     try {
-        const data = await fs.readFile(productosPath, 'utf-8'); 
-        const productos = JSON.parse(data); 
-
-        const productId = req.params.pid; // Obtén el ID del producto de los parámetros
-        const productIndex = productos.findIndex((p) => p.id === productId); // Encuentra el índice del producto
-
-        if (productIndex === -1) {
-            // Si no se encuentra el producto, devuelve un error 404
-            return res.status(404).json({ error: `Producto con ID ${productId} no encontrado` });
+        const deletedProduct = await Product.findByIdAndDelete(req.params.pid);
+        if (!deletedProduct) {
+            return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }
-
-        // Elimina el producto del array
-        productos.splice(productIndex, 1);
-
-        // Guarda los cambios en el archivo JSON
-        await fs.writeFile(productosPath, JSON.stringify(productos, null, 2));
-
-        res.status(200).json({ message: `Producto con ID ${productId} eliminado correctamente` });
+        res.json({ status: 'success', message: 'Producto eliminado correctamente' });
     } catch (error) {
         console.error('Error al eliminar el producto:', error.message);
-        res.status(500).json({ error: 'Error al eliminar el producto' });
+        res.status(500).json({ status: 'error', message: 'Error al eliminar el producto' });
     }
 });
 
-module.exports = router; // Exporta el router
+module.exports = router;

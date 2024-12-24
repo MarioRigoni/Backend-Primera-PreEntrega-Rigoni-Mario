@@ -1,0 +1,48 @@
+{{!-- Layout principal para mostrar los detalles del carrito --}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carrito de Compras</title>
+</head>
+<body>
+    <h1>Carrito de Compras</h1>
+
+    {{#if products.length}}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Descripción</th>
+                    <th>Precio</th>
+                    <th>Cantidad</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#each products}}
+                    <tr>
+                        <td>{{this.product.title}}</td>
+                        <td>{{this.product.description}}</td>
+                        <td>{{this.product.price}}</td>
+                        <td>{{this.quantity}}</td>
+                        <td>
+                            <form action="/carts/{{../_id}}/product/{{this.product._id}}?_method=DELETE" method="POST">
+                                <button type="submit">Eliminar</button>
+                            </form>
+                        </td>
+                    </tr>
+                {{/each}}
+            </tbody>
+        </table>
+        <form action="/carts/{{_id}}?_method=DELETE" method="POST">
+            <button type="submit">Vaciar Carrito</button>
+        </form>
+    {{else}}
+        <p>El carrito está vacío.</p>
+    {{/if}}
+
+    <a href="/products">Volver a productos</a>
+</body>
+</html>
